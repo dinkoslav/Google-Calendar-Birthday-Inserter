@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Google Calendar Event Add</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<button id="authorize-button" style="visibility: hidden">Log In Google</button>
+<div id="content">
+
+    <p>Step 1: Choose calendar where to add the events.</p>
+
+    <select id="events"></select>
+
+    <p>Step 2: Choose file with names and birthdays.</p>
+
+    <input type="file" id="fileInput" placeholder="Choose File"/>
+
+    <p class="note">NOTE! The file must be *.txt (CSV file) with "Person Name, UCN" </p>
+
+    <p>Step 3: Check if events are correct.</p>
+
+    <p id="fileDisplayArea"></p>
+
+    <p>Step 4: Add the events.</p>
+
+    <button id="submit" onclick="sendEvents()">Submit</button>
+
+</div>
+
+<script type="text/javascript">
+
+    // App information
+    var clientId = '1037420927604-ffdd2id54q4dlen81mi42sojtsn10i8c.apps.googleusercontent.com';
+    var apiKey = 'AIzaSyA7k9I_rDPj8LuVgYpTOhQErahcdALJzVw';
+    var scopes = 'https://www.googleapis.com/auth/calendar';
+
+    // Global variables
+    var fileInput = document.getElementById('fileInput');
+    var fileDisplayArea = document.getElementById('fileDisplayArea');
+    var submitBtn = document.getElementById('submit');
+    var events = {};
+    var calendars = {};
+
+    // Use a button to handle authentication the first time.
+    function handleClientLoad() {
+        gapi.client.setApiKey(apiKey);
+        window.setTimeout(checkAuth,1);
+    }
+
+    function checkAuth() {
+        gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: true}, handleAuthResult);
+    }
+
+    // Check if is logged
+    function handleAuthResult(authResult) {
+        var authorizeButton = document.getElementById('authorize-button');
+        var eventContent = document.getElementById('content');
+        if (authResult && !authResult.error) {
+            authorizeButton.style.visibility = 'hidden';
+            eventContent.style.visibility = '';
+            makeApiCall();
+        } else {
+            authorizeButton.style.visibility = '';
+            eventContent.style.visibility = 'hidden';
+            authorizeButton.onclick = handleAuthClick;
+        }
+    }
+
+    function handleAuthClick(event) {
+        gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: false}, handleAuthResult);
+        return false;
+    }
+
+    // Load the API and make an API call.  Display the calendars on the screen.
+    function makeApiCall() {
+        gapi.client.load('calendar', 'v3', function() {
+            var request = gapi.client.calendar.calendarList.list();
+            request.execute(function(resp) {
+                for (var i = 0; i < resp.items.length; i++) {
+                    var calendarName = resp.items[i].summary;
+                    calendars[calendarName] = resp.items[i].id;
+                    var option = document.createElement('option');
+                    option.appendChild(document.createTextNode(resp.items[i].summary));
+                    document.getElementById('events').appendChild(option);
+                }
+            });
+        });
+    }
+
+    // Read the file and display the content for approval
+    fileInput.addEventListener('change', function(e) {
+        var file = fileInput.files[0];
+        var textType = /text.*/;
+
+        if (file.type.match(textType)) {
+            var reader = new FileReader();
+
+            reader.onload = function(e) {
+                fileDisplayArea.innerText = reader.result;
+            };
+            reader.readAsText(file);
+
+        } else {
+            fileDisplayArea.innerText = "File not supported!"
+        }
+    });
+
+    function sendEvents(){
+        var selectedCalendarName = getSelectedCalendar('events');
+        var selectedCalendarID = calendars[selectedCalendarName];
+        console.log(selectedCalendarID);
+        prepareEvents();
+        for(var event in events){
+            uploadEvents(events[event][0], events[event][1], selectedCalendarID);
+        }
+    }
+
+    // Check for selected calendar
+    function getSelectedCalendar(elementId) {
+        var elt = document.getElementById(elementId);
+
+        if (elt.selectedIndex == -1)
+            return null;
+
+        return elt.options[elt.selectedIndex].text;
+    }
+
+    // Prepare data for upload
+    function prepareEvents(){
+        var rows = fileDisplayArea.innerHTML.split('<br>');
+        for(var row in rows){
+            var elements = rows[row].split(',');
+            var name = elements[0].trim();
+            var ucn = elements[1].trim();
+            var month = ucn.slice(2,4);
+            var day = ucn.slice(4,6);
+            var date = '2014-' + month + '-' + day;
+            events[ucn] = [];
+            events[ucn].push(name);
+            events[ucn].push(date);
+        }
+    }
+
+    // Upload the events
+    function uploadEvents(name, date, selected){
+        {
+            var startDateTime = date + 'T10:00:00.000-07:00';
+            var endDateTime = date + 'T12:00:00.000-07:00';
+
+            gapi.client.load('calendar', 'v3', function() {
+                var request = gapi.client.calendar.events.insert({
+                    'calendarId':selected,
+                    'type': 'POST',
+                    'maxAttendees' :1,
+                    'sendNotifications': false,
+                    'scope': scopes,
+                    'end':
+                    {
+                        'dateTime':endDateTime,
+                        "timeZone": "UTC",
+                        "date": null
+                    },
+                    'start':
+                    {
+                        'dateTime':startDateTime,
+                        "timeZone": "UTC",
+                        "date": null
+                    },
+                    'visibility':'default',
+                    'location':'Bulgaria',
+                    'creator':
+                    {
+                        'self':true
+                    },
+                    'description':'Birthday',
+                    'summary':name + "'s Birthday"
+                });
+                request.execute(function(resp) {
+                    console.log(resp);
+                });
+            });
+        }
+    }
+</script>
+<script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+</body>
+</html>
